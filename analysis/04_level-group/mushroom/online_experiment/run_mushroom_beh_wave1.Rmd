@@ -1,0 +1,386 @@
+---
+title: "1. wave1_mushroomTask"
+author: "Lieke Hofmans"
+date: "5/28/2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warnings = FALSE)
+
+# packages
+library("ggplot2")
+library("stringr")
+library("tidyr")
+library("viridis")
+library("stringi")
+library("readr")
+library("ez")
+library("lme4")
+library("lmerTest")
+library("dplyr")
+
+
+# directories
+setwd("D:/OneDrive/UvA/projects/beh_SocialInformation_Uncertainty_and_Proximity_adults/analysis")
+analysis_wd <- getwd()
+main_wd <- ".."
+rawdata_wd <- "../rawdata"
+rawdata_mushroom_wd <- "../rawdata/1. wave1_mushroomTask"
+data_wd <- "../data"
+
+source("summary_function.R")
+
+# how many rows is a behavioral dataset supposed to have?
+correct_nTrials <- 81
+```
+
+
+Create csv with behavioral data
+```{r csv behavioral data, echo=FALSE}
+
+selected_files <- list.files(path = rawdata_mushroom_wd, pattern = "^[[:alnum:]]{24}_mushroom_task_(.{24})csv$") 
+
+# initiate dataframe to retrieve bonus and comments
+df_all <- data.frame()
+# loop through selected files to filter data
+sID_index <- 1
+for (file_index in 1:length(selected_files)){
+  if (file.size(file.path(rawdata_mushroom_wd, selected_files[file_index])) > 2){
+    datafile <- read.csv(file.path(rawdata_mushroom_wd, selected_files[file_index]))
+    # keep only rows with behavioral task data
+    datafile <- datafile[!is.na(datafile$estimation.rating),]
+    if (nrow(datafile) == correct_nTrials){ # only store complete datasets
+      # keep only columns with relevant behavioral task data
+      datafile <- datafile[,c("nTotal", "trueRatio", "givenRatio", "seen_ratio", "cross_hair.ITI", "nMushrooms", "nBlue", "nRed", "estimation.rating", "estimation.rt", "confidence.response", "confidence.rt", "traits")]
+      datafile <- cbind(sID = sID_index, trialNumber = c(1:nrow(datafile)), datafile)
+      df_all <- rbind(df_all, datafile)
+      sID_index <- sID_index + 1
+    }
+  }
+} 
+colnames(df_all) <- c("sID", "trialNumber", "nTotal", "true_ratio", "given_ratio", "seen_ratio", "ITI", "nMushrooms", "nBlue", "nRed", "estimate", "estimateRT", "confidence", "confidenceRT", "traits")
+
+#write_csv(df_all, file.path(data_wd, "1. behdata_wave1_mushroomTask.csv"))
+
+
+#==============================================================================
+# csv to use as input for mushroom task with social information
+wave1_input <- select(df_all, nTotal, true_ratio, confidence, estimate)
+#write_csv(wave1_input, file.path(data_wd, "wave1_input_for_wave2.csv"))
+
+```
+
+
+Create csv including bonus and comments 
+```{r csv bonus, echo=FALSE}
+# select datafiles based on pattern
+selected_files <- list.files(path = rawdata_mushroom_wd, pattern = "^[[:alnum:]]{24}_mushroom_task_(.{24})csv$")
+list_MaleRep <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_60afa95d45b46bbf0516569a_wave1_MaleRep.csv"))
+list_MaleDem <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_60afa95d45b46bbf0516569a_wave1_MaleDem.csv"))
+list_FemaleRep <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_60afa95d45b46bbf0516569a_wave1_FemaleRep.csv"))
+list_FemaleDem <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_60afa95d45b46bbf0516569a_wave1_FemaleDem.csv"))
+
+# initiate dataframe to retrieve bonus and comments
+df_bonus <- data.frame(matrix(ncol = 5, nrow = length(selected_files)))
+colnames(df_bonus) <- c("prID", "group", "bonus", "comments_instructions", "comments_other")
+
+# loop through selected files to filter data
+for (file_index in 1:length(selected_files)){
+  if (file.size(file.path(rawdata_mushroom_wd, selected_files[file_index])) > 2){
+    datafile <- read.csv(file.path(rawdata_mushroom_wd, selected_files[file_index]))
+    if (nrow(datafile[!is.na(datafile$estimation.rating),]) == correct_nTrials){ # only store complete datasets
+      df_bonus$prID[file_index] <- unique(datafile$participant)
+      if (df_bonus$prID[file_index] %in% list_MaleRep$participant_id){
+        df_bonus$group[file_index] <- "MaleRep"
+      } else if (df_bonus$prID[file_index] %in% list_MaleDem$participant_id){
+        df_bonus$group[file_index] <- "MaleDem"
+      } else if (df_bonus$prID[file_index] %in% list_FemaleRep$participant_id){
+        df_bonus$group[file_index] <- "FemaleRep"
+      } else if (df_bonus$prID[file_index] %in% list_FemaleDem$participant_id){
+        df_bonus$group[file_index] <- "FemaleDem"
+      }
+      df_bonus$bonus[file_index] <- unique(datafile$bonus[!is.na(datafile$bonus)])
+      df_bonus$comments_instructions[file_index] <- unique(datafile$input_instructions.text[!stri_isempty(datafile$input_instructions.text)])
+      df_bonus$comments_other[file_index] <- unique(datafile$input_other.text[!stri_isempty(datafile$input_other.text)])
+    }
+  }
+} 
+df_bonus <- df_bonus[!is.na(df_bonus$prID),]
+
+#write_csv(df_bonus, file.path(data_wd, "1. demographics_wave1_mushroomTask.csv"))
+
+```
+
+
+# Start data exploration:
+
+### 1)	Performance as a function of ratio {.tabset}
+Estimates follow the true ratio quite well, but with an undershoot in the higher region and overshoot in the lower region, as expected.
+
+```{r 1, warning=FALSE}
+
+# across the group 
+summ <- summarySE(df_all, measurevar="estimate", groupvars=c("seen_ratio")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate)) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df_all, size=2, alpha=0.05, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+
+```
+
+```{r 1b, warning=FALSE, fig.width=20, fig.height=80}
+
+# for each participant
+summ <- summarySE(df_all, measurevar="estimate", groupvars=c("seen_ratio", "sID")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate)) +
+  facet_wrap(vars(sID),ncol = 5) +
+  geom_abline(intercept = 0, slope = 100, color = "black") +
+  geom_jitter(data = df_all, alpha=0.5, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(color = "darkblue") 
+
+
+```
+
+
+### 1b) Performance as a function of ratio
+Now without outliers
+
+```{r outliers, warning=FALSE}
+
+# for each participant
+outliers <- c(7, 8, 9, 18, 47, 57, 68, 71, 75)
+df <- df_all[-which(df_all$sID %in% outliers),]
+
+summ <- summarySE(df, measurevar="estimate", groupvars=c("seen_ratio")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate)) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.05, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+
+
+```
+
+
+### 2)	Performance as a function of ratio, per certainty level {.tabset}
+Pattern looks good for all 3 certainty levels, with slightly better performance when certainty is higher.
+
+```{r 2, warning=FALSE}
+
+# across the group, 1 graph for each certainty level
+summ <- summarySE(df, measurevar="estimate", groupvars=c("seen_ratio", "nTotal")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate)) +
+  facet_wrap(vars(nTotal),ncol = 3) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.05, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+
+# across the group, 1 color for each certainty level
+summ <- summarySE(df, measurevar="estimate", groupvars=c("seen_ratio", "nTotal")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate, color = as.factor(nTotal))) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.05, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm") +
+  geom_point(size=4) +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1) + 
+  scale_color_viridis(discrete=TRUE)
+
+
+```
+
+```{r 2b, warning=FALSE, fig.width=20, fig.height=80}
+# for each participant
+summ <- summarySE(df, measurevar="estimate", groupvars=c("seen_ratio", "nTotal", "sID")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate, color = as.factor(nTotal))) +
+  facet_wrap(vars(sID),ncol = 5) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, alpha=0.05, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm") +
+  geom_point() +
+  scale_color_viridis(discrete=TRUE)
+
+```
+
+### 3)	Performance as a function of certainty level {.tabset}
+Across the group performance (absolute deviance between estimate and seen ratio) is better for higher certainty levels.
+```{r 3, warning=FALSE}
+
+# across the group
+df$deviance <- abs(df$estimate - df$seen_ratio*100)
+summ <- summarySE(df, measurevar="deviance", groupvars=c("nTotal")) # summarize data to retrieve mean and SE
+summ2 <- summarySE(df, measurevar="deviance", groupvars=c("nTotal", "sID"))
+ggplot(data = summ, aes(x = as.factor(nTotal), y = deviance)) +
+  geom_hline(yintercept = 0) +
+  geom_jitter(data = summ2, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=deviance-se, ymax=deviance+se), width=0.1, size = 0.5, color = "red") 
+
+
+fit <- lmerTest::lmer(deviance ~ as.factor(nTotal)*as.numeric(seen_ratio) +
+                                         (1 + as.factor(nTotal)*as.numeric(seen_ratio) | sID),
+                                       #control=lmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 1000000000)),
+                                       data=df)
+summary(fit)
+
+```
+
+### 4)	Performance as a function of confidence {.tabset}
+HIgher performance for higher confidence?
+```{r 4, warning=FALSE}
+
+# across the group
+df$deviance <- abs(df$estimate - df$seen_ratio*100)
+summ <- summarySE(df, measurevar="deviance", groupvars=c("confidence")) # summarize data to retrieve mean and SE
+summ2 <- summarySE(df, measurevar="deviance", groupvars=c("confidence", "sID"))
+ggplot(data = summ, aes(x = as.factor(confidence), y = deviance)) +
+  geom_hline(yintercept = 0) +
+  geom_jitter(data = summ2, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=deviance-se, ymax=deviance+se), width=0.1, size = 0.5, color = "red") 
+
+
+# across the group, per certainty level
+df$deviance <- abs(df$estimate - df$seen_ratio*100)
+summ <- summarySE(df, measurevar="deviance", groupvars=c("confidence", "nTotal")) # summarize data to retrieve mean and SE
+summ2 <- summarySE(df, measurevar="deviance", groupvars=c("confidence", "nTotal", "sID"))
+ggplot(data = summ, aes(x = as.factor(confidence), y = deviance)) +
+  facet_wrap(vars(nTotal), ncol = 3) +
+  geom_hline(yintercept = 0) +
+  geom_jitter(data = summ2, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=deviance-se, ymax=deviance+se), width=0.1, size = 0.5, color = "red") 
+
+fit <- lmerTest::lmer(deviance ~ as.factor(confidence) + as.numeric(seen_ratio) +
+                                         (1 + as.factor(confidence) + as.numeric(seen_ratio) | sID),
+                                       data=df)
+summary(fit)
+
+
+
+```
+
+### 5)	Confidence as a function of certainty level {.tabset}
+Across the group, confidence ratings seem to follow certainty level. 
+```{r 5, warning=FALSE}
+
+# across the group
+summ <- summarySE(df, measurevar="confidence", groupvars=c("nTotal")) # summarize data to retrieve mean and SE
+summ2 <- summarySE(df, measurevar="confidence", groupvars=c("nTotal", "sID"))
+ggplot(data = summ, aes(x = as.factor(nTotal), y = confidence)) +
+  geom_jitter(data = summ2, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=confidence-se, ymax=confidence+se), width=0.1, size = 0.5, color = "red") 
+
+
+df$nTotal_numeric <- ifelse(df$nTotal == 5, -1, ifelse(df$nTotal == 25, 0, 1))
+
+fit <- lmerTest::lmer(confidence ~ nTotal_numeric +
+                                         (1 + nTotal_numeric | sID),
+                                       data=df) #change to ordinal later
+summary(fit)
+
+cor.test(df$confidence, df$nTotal,  method="spearman")
+
+
+```
+
+```{r 5b, warning=FALSE, fig.width=20, fig.height=80}
+# for each participant
+summ <- summarySE(df, measurevar="confidence", groupvars=c("nTotal", "sID")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = as.factor(nTotal), y = confidence)) +
+  facet_wrap(vars(sID), ncol = 5) +
+  geom_jitter(data = df, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=confidence-se, ymax=confidence+se), width=0.1, size = 0.5, color = "red") 
+
+```
+
+
+### 6)	Confidence as a function of ratio and certainty level {.tabset}
+Pretty robust pattern in how confidence depends on certainty level across the ratio's.
+Confidence is higher for more extreme ratio's (as expected)
+```{r 6, warning=FALSE}
+
+# across the group
+# confidence as a function of certainty, per ratio level
+summ <- summarySE(df, measurevar="confidence", groupvars=c("nTotal", "true_ratio")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = as.factor(nTotal), y = confidence)) +
+  facet_wrap(vars(true_ratio), ncol = 3) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=confidence-se, ymax=confidence+se), width=0.1, size = 0.5, color = "red") 
+
+# confidence as a function of ratio, per certainty level
+summ <- summarySE(df, measurevar="confidence", groupvars=c("nTotal", "true_ratio")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = as.factor(true_ratio), y = confidence)) +
+  facet_wrap(vars(nTotal), ncol = 3) +
+  geom_point(size=1, color = "red") +
+  geom_errorbar(aes(ymin=confidence-se, ymax=confidence+se), width=0.1, size = 0.5, color = "red") 
+
+
+```
+
+### 7)	Histogram of estimates {.tabset}
+Pretty uniform
+```{r 7, warning=FALSE}
+ggplot(data = df, aes(x = estimate)) +
+  geom_histogram(binwidth = 6.25, color = "black", fill = "grey") + 
+  scale_x_continuous(breaks = unique(df$ratio)*100, limits = c(-10,110))
+```
+
+
+### 8)	Histogram of confidence {.tabset}
+More ratings for medium and  high confidence than for low confidence.
+```{r 8, warning=FALSE}
+ggplot(data = df, aes(x = confidence)) +
+  geom_bar(color = "black", fill = "grey") 
+```
+
+
+### 9)	Performance as a function of true_ratio {.tabset}
+To see if there is enough variability in responses as a function of the underlying, true ratio, such that we have enough instances of social information to present later on. 
+Yes, I would say there is enough variability. 
+
+```{r 9, warning=FALSE}
+
+# across the group
+summ <- summarySE(df, measurevar="estimate", groupvars=c("true_ratio")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = true_ratio, y = estimate)) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.2, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+
+# for each certainty level
+summ <- summarySE(df, measurevar="estimate", groupvars=c("true_ratio", "nTotal")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = true_ratio, y = estimate)) +
+  facet_wrap(vars(nTotal), ncol = 3) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.2, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+
+# for each confidence level
+summ <- summarySE(df, measurevar="estimate", groupvars=c("true_ratio", "confidence")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = true_ratio, y = estimate)) +
+  facet_wrap(vars(confidence), ncol = 3) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = df, size=2, alpha=0.2, width = 0.01, height = 0.01, color = "darkblue") +
+  geom_smooth(method = "lm", color = "darkblue") +
+  geom_point(size=4, color = "darkblue") +
+  geom_errorbar(aes(ymin=estimate-se, ymax=estimate+se), width=.05, size=1, color = "darkblue") 
+```
+
