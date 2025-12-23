@@ -1,0 +1,122 @@
+HOW TO RUN GROUP-LEVEL ANALYSIS
+
+
+1. RUN run_mushroom_beh.Rmd in R
+========================================================================================================
+This runs all the model-free ananlyses on the mushroom task data.
+
+It sources the data
+- group_task-mushroom_preproc-trialwise.csv
+- group_demographics.csv
+
+It sources the scripts
+- summary_function.R
+- raincloud_plots.R
+
+It runs
+- descriptive plots 
+- a mixed model on social information use
+
+It outputs a new csv including the random effects
+- group_task-mushroom_preproc-trialwise-ranefs.csv
+
+
+2. RUN run_mushroom_compModel.R in R
+========================================================================================================
+
+It sources the data
+- group_task-mushroom_preproc-trialwise-ranefs.csv
+
+It sources the scripts
+- summary_function.R
+- model_specification.R (all models to run)
+- helper_functions.R
+
+It runs
+- model fitting
+- model comparison
+- calculates model-based own certainty and peer confidence
+- defines posterior predictives
+- plots modeled data vs actual data
+
+It outputs
+- results_fit_sample/subject_MX_fitE2: best fit for all parameters, for each participant and each model separately
+- results_pred/pred_MX_fitE2: runs model with estimated parameters and returns predicted "behavior", in terms of perceived blue and red mushrooms for self and peer
+
+
+3. RUN model_recovery.R in R
+========================================================================================================
+
+It sources the data
+- 4. behdata_wave2_mushroomTask_confidence_preproc.csv (data online experiment)
+- group_task-mushroom_preproc-trialwise.csv (data second experiment)
+
+It sources the scripts
+- summary_function.R
+- model_specification.R (all models to run)
+- helper_functions.R
+
+It runs
+- model recovery procedure for all models
+- parameter recovery procedure for all models
+
+It outputs
+- results_sim/sim_generatedFrom_MX.txt: simulated task parameters based on individual parameter values
+- results_sim/combinedExperiments_fit_MX_dataGeneratedFromMX.txt: fitted parameter values
+
+
+4. RUN compute_modelBasedParameters_forFMRI_allTrials.R in R
+========================================================================================================
+
+It sources the data
+- group_task-mushroom_preproc-trialwise-ranefs.csv
+- subject_M3d_fitE2.txt (fitted parameter values)
+
+It runs
+- the combining of all behavioral mushroom data with computational parameters and parameter-based variables.
+
+It outputs
+- group_task-mushroom_preproc-trialwise-params_forfMRI_allTrials.csv (to be correlated with fMRI BOLD)
+
+
+========================================================================================================
+======================================= fMRI ANALYSES ==================================================
+========================================================================================================
+
+
+5. RUN lower level fMRI analyes (see how to in corresponding folder)
+========================================================================================================
+- 00_bidsConversion/MRI/scripts
+- 01_preprocessing/fMRI
+- 02_first_level/scripts
+- 03_second_level/scripts
+
+
+6. RUN groupLevel.sh in terminal
+========================================================================================================
+Within this script, you can define which steps you want to run:
+- running the actual analysis: this requires the .fsf files, which include all the parameters to run the GLMs
+- running masked or unmasked results
+- create the mask by combining all the different brain areas. 
+
+==> significant_clusters_adults.xlsx are all significant clusters for all contrasts, based on the Glasser atlas.
+
+
+7. RUN PPI/extract_timeseries.sh in terminal
+========================================================================================================
+For each subject and each contrast specified, the script create a group-level ROI mask (Z > 3.1, cluster-corrected), 
+and then identifies the peak voxel for each individual within this mask. 
+Around each subject-specific peak, it defines a 3 mm spherical ROI and extracts the mean timeseries. 
+
+
+8. RUN PPI/extract_timeseries.sh in terminal
+========================================================================================================
+For each subject and each contrast specified, the script create a group-level ROI mask (Z > 3.1, cluster-corrected), 
+and then identifies the peak voxel for each individual within this mask. 
+Around each subject-specific peak, it defines a 3 mm spherical ROI and extracts the mean timeseries. 
+
+
+9. RUN PPI/PPI_analysis.R in R
+========================================================================================================
+Run (simplified) PPI analysis by running the mixed model: 
+target_timeseries (=perceived confidence) ~ seed_timeseries (=perceived own certainty) * KL divergence + (1 | sID)

@@ -1,0 +1,320 @@
+---
+title: "analysis_task-mushroomAdults_beh"
+author: "Lieke Hofmans"
+date: "2023-05-18"
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+```{r setup, include=FALSE}
+rm(list = ls())
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warnings = FALSE)
+
+# packages (no idea which ones are actually necessary)
+library("ggplot2")
+library("stringr")
+library("tidyr")
+library("viridis")
+library("stringi")
+library("readr")
+library("ez")
+library("lmerTest")
+library("dplyr")
+library("tidyverse")
+
+
+# directories
+setwd("P:/fMRI Projects/fMRI Project Mushroom/analysis")
+analysis_wd <- getwd()
+derivatives_wd <- file.path("P:/fMRI Projects/fMRI Project Mushroom/bids/derivatives/beh/mushroom")
+demographics_wd <- file.path("P:/fMRI Projects/fMRI Project Mushroom/bids/derivatives/qnr/demographics")
+
+source("summary_function.R")
+source(file.path(analysis_wd, "raincloud_plots.R"))
+
+# load mushroom data
+df_mushroom <- read.csv(file.path(derivatives_wd, "group_task-mushroom_preproc-trialwise.csv"))
+df_mushroom_clean <- df_mushroom
+
+# Load demographics data
+df_demographics <- read.csv(file.path(demographics_wd, "group_demographics.csv"))
+df_demographics <- df_demographics[df_demographics$sID %in% df_mushroom_clean$sID,]
+
+
+```
+
+```{r demographics data, fig.height= 6, fig.width=7}
+
+# N
+nrow(df_demographics)
+nrow(df_demographics[df_demographics$gender=="2",])
+
+# Age
+ggplot(data = df_demographics, aes(x = age)) +
+  geom_histogram(binwidth = 1, color = "black", fill = "grey") + 
+  theme_classic(base_size = 30) +
+  ggtitle("adults")
+range(df_demographics$age); mean(df_demographics$age); sd(df_demographics$age)
+
+
+```
+
+
+```{r plot descriptive data, fig.height= 6, fig.width=7}
+
+################################################################################
+#### Accuracy at estimate 1
+################################################################################
+
+# histogram of estimates at E1
+ggplot(data = df_mushroom, aes(x = estimate1)) +
+  geom_histogram(binwidth = 6.25, color = "black", fill = "grey") + 
+  scale_x_continuous(breaks = unique(df_mushroom$true_ratio)*100, limits = c(-10,110)) +
+  theme_classic(base_size = 16) +
+  ggtitle("Estimate 1")
+
+
+# Do participants' estimates at E1 align with the seen ratio? Yes
+summ_ind <- summarySE(df_mushroom, measurevar="estimate1", groupvars=c("seen_ratio", "nTotal", "sID")) 
+summ_group <- summarySE(summ_ind, measurevar="estimate1", groupvars=c("seen_ratio", "nTotal"))
+
+ggplot(data = summ_group, aes(x = seen_ratio, y = estimate1, color = as.factor(nTotal))) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = summ_ind, size=2, alpha=0.3, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm", se=F) +
+  geom_point(size=3) +
+  geom_errorbar(aes(ymin=estimate1-se, ymax=estimate1+se), width=.05, size=1) + 
+  scale_color_viridis(discrete=TRUE) +
+  theme_classic(base_size = 35) +
+  xlab("seen ratio") + 
+  ylab("estimate 1") + 
+  scale_color_manual(labels=c("high uncertainty", "low uncertainty"),name="",values = c('#453781FF',"#95D840FF" )) +
+  theme(legend.position = c(0.7, 0.25), legend.background = element_rect(fill='transparent')) + 
+  coord_cartesian(xlim=c(0,1), ylim=c(0,100))
+
+# Do participants' estimates at E1 align with the true ratio? Yes
+summ_ind <- summarySE(df_mushroom, measurevar="estimate1", groupvars=c("true_ratio", "nTotal", "sID")) 
+summ_group <- summarySE(summ_ind, measurevar="estimate1", groupvars=c("true_ratio", "nTotal"))
+
+ggplot(data = summ_group, aes(x = true_ratio, y = estimate1, color = as.factor(nTotal))) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_jitter(data = summ_ind, size=2, alpha=0.3, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm", se=F) +
+  geom_point(size=3) +
+  geom_errorbar(aes(ymin=estimate1-se, ymax=estimate1+se), width=.05, size=1) + 
+  scale_color_viridis(discrete=TRUE) +
+  theme_classic(base_size = 30) +
+  xlab("true ratio") + 
+  ylab("estimate 1") + 
+  scale_color_manual(labels=c("high uncertainty", "low uncertainty"),name="",values = c('#453781FF',"#95D840FF" )) +
+  theme(legend.position = c(0.7, 0.25), legend.background = element_rect(fill='transparent')) + 
+  coord_cartesian(xlim=c(0,1), ylim=c(0,100))
+
+
+```
+
+```{r plot descriptive data 2, fig.height= 6, fig.width=6}
+
+################################################################################
+#### Accuracy at estimate 1
+################################################################################
+
+
+# Are participants more accurate relative to the seen ratio at low own certainty (easier to estimate)? 
+df_mushroom$deviance1_seen <- abs(df_mushroom$estimate1 - df_mushroom$seen_ratio*100)
+summ_ind <- summarySE(df_mushroom, measurevar="deviance1_seen", groupvars=c("nTotal", "sID"))
+summ_group <- summarySE(summ_ind, measurevar="deviance1_seen", groupvars=c("nTotal")) 
+
+ggplot(data = summ_group, aes(x = as.factor(nTotal), y = deviance1_seen)) +
+  geom_line(data = summ_ind, aes(group = sID), alpha = 0.2) +
+  geom_point(size=2, color = "#7B168C") +
+  geom_errorbar(aes(ymin=deviance1_seen-se, ymax=deviance1_seen+se), width=0.2, size = 2, color = "#7B168C") +
+  theme_classic(base_size = 30) +
+  scale_x_discrete(name = "", labels = c("5"="uncertain", "45"="certain")) +
+  ylab("deviance from seen ratio")
+
+fit_deviance_seen <- lmerTest::lmer(deviance1_seen ~ nTotal + 
+                        (1 | sID),
+                        data=df_mushroom)
+summary(fit_deviance_seen) # beta = 0.08, p < 0.001: Participants are more accurate regarding the seen ratio at low own certainty.
+
+# Are participants more accurate relative to the true ratio at high own certainty?
+df_mushroom$deviance1_true <- abs(df_mushroom$estimate1 - df_mushroom$true_ratio*100)
+summ_ind <- summarySE(df_mushroom, measurevar="deviance1_true", groupvars=c("nTotal", "sID"))
+summ_group <- summarySE(summ_ind, measurevar="deviance1_true", groupvars=c("nTotal")) 
+
+ggplot(data = summ_group, aes(x = as.factor(nTotal), y = deviance1_true)) +
+  #geom_jitter(data = summ_ind, alpha=0.1, color = "darkblue", width = 0.05, height = 0.05, size=4) +
+  geom_line(data = summ_ind, aes(group = sID), alpha = 0.2) +
+  geom_point(size=2, color = "#7B168C") +
+  geom_errorbar(aes(ymin=deviance1_true-se, ymax=deviance1_true+se), width=0.2, size = 2, color = "#7B168C") +
+  theme_classic(base_size = 30) +
+  scale_x_discrete(name = "condition", labels = c("5"="uncertain", "45"="certain")) +
+  ylab("deviance from true ratio")
+
+fit_deviance_true <- lmerTest::lmer(deviance1_true ~ nTotal + 
+                        (1 | sID),
+                        data=df_mushroom)
+summary(fit_deviance_true) # beta = 0.0006, p = 0.876: No effect of own certainty on accuracy
+
+# Paired t-test
+summ_ind <- summ_ind[order(summ_ind$nTotal, summ_ind$sID), ]
+t.test(deviance1_true ~ nTotal, summ_ind, paired=TRUE) # t = 0.27, p = 0.790
+mean(summ_ind$deviance1_true[summ_ind$nTotal==5]); mean(summ_ind$deviance1_true[summ_ind$nTotal==45]); 
+
+```
+
+```{r plot descriptive data 3, fig.height= 6, fig.width=7}
+
+
+################################################################################
+#### social information use
+################################################################################
+
+summ_ind <- summarySE(df_mushroom, measurevar="s", groupvars=c("confidence_peer", "nTotal", "sID")) 
+summ_group <- summarySE(summ_ind, measurevar="s", groupvars=c("sID"))
+mean(df_mushroom$s)
+
+# histogram of s (trialwise)
+ggplot(data = df_mushroom, aes(x=s)) +
+  geom_histogram(fill="grey", color = "black", bins = 20) +
+  theme_classic(base_size = 30) +
+  geom_vline(aes(xintercept = mean(s)), size = 1, color = "red") +
+  xlab("social information use (s)")
+
+# histogram of mean s per participant
+ggplot(data = summ_group, aes(x=s)) +
+  geom_histogram(fill="grey", color = "black", bins = 20) +
+  theme_classic(base_size = 30) +
+  geom_vline(aes(xintercept = mean(s)), size = 1, color = "red") +
+  xlab("mean social information use (S)")
+
+
+```
+
+```{r plot descriptive data 4, fig.height= 6, fig.width=7}
+
+################################################################################
+#### Certainty level and self-reported confidence
+################################################################################
+
+summ_ind <- summarySE(df_mushroom, measurevar="confidence_rating", groupvars=c("nTotal", "sID")) 
+summ_group <- summarySE(summ_ind, measurevar="confidence_rating", groupvars=c("nTotal"))
+summ_group$nTotal <- ifelse(summ_group$nTotal==5, 1, 2)
+
+
+ggplot(data = summ_ind, aes(x = as.factor(nTotal), y = confidence_rating)) +
+  geom_flat_violin(fill = "grey", position = position_nudge(x = 0.1))+
+  geom_point(position = position_jitter(width = .05, height = 0), size = 2.5, shape = 20, alpha=0.2)+
+  geom_line(data = summ_group, aes(x = nTotal, y = confidence_rating), size = 1.2, position = position_nudge(x = 0.1)) +
+  geom_errorbar(data = summ_group, aes(x = nTotal, ymin=confidence_rating-se, ymax=confidence_rating+se), width=0.2, size = 1.5, position = position_nudge(x = 0.1)) +
+  geom_point(data = summ_group, aes(x = nTotal, y = confidence_rating), size=2.5, position = position_nudge(x = 0.1)) +
+  theme_classic(base_size = 30) +
+  ylab("mean confidence rating") +
+  scale_x_discrete(name = "condition", labels = c("5"="uncertain", "45"="certain"))
+
+
+t.test(x = summ_ind$confidence_rating[summ_ind$nTotal==45], y = summ_ind$confidence_rating[summ_ind$nTotal==5], paired = TRUE) # t = 7.41, df = 66, p < 0.001
+
+
+
+
+```
+
+
+```{r social information use and certainty, warning=FALSE, fig.height= 6, fig.width=7}
+
+################################################################################
+#### Plot proportion social information use vs "stay"
+################################################################################
+
+summ_ind <- df_mushroom%>%
+  select(sID, s)%>%
+  group_by(sID)%>%
+  dplyr::summarise(freq_s = sum(s>0)/n())
+
+summ_ind <- df_mushroom%>%
+  select(sID, confidence_peer, nTotal, s)%>%
+  group_by(sID, confidence_peer, nTotal)%>%
+  dplyr::summarise(freq_s = sum(s>0)/n())
+
+summ_group <- summarySE(summ_ind, measurevar="freq_s", groupvars=c("nTotal", "confidence_peer")) 
+
+ggplot(data = summ_group, aes(x = as.factor(confidence_peer), y = freq_s, color = as.factor(nTotal))) +
+  #geom_point(data = summ_ind, size=2, alpha=0.3, position=position_jitterdodge(jitter.width = 0.1, jitter.height=0.01, dodge.width=0.3)) +
+  geom_line(data = summ_ind, aes(group = interaction(as.factor(nTotal),sID)), alpha = 0.2) +
+  geom_line(aes(x = confidence_peer), size = 1.2) +
+  geom_point(size = 2) + 
+  geom_errorbar(aes(ymin=freq_s-se, ymax=freq_s+se), size=1, width = 0.2) +
+  theme_classic(base_size = 16) +
+  scale_color_manual(labels=c("low", "high"),name="own certainty",values = c('#453781FF',"#95D840FF" )) + 
+  coord_cartesian(ylim = c(0,1)) +
+  ylab("proportion s > 0") + 
+  xlab("peer confidence") +
+  ggtitle("All trials")
+
+
+################################################################################
+#### Plot social information use 
+################################################################################
+
+# all trials
+summ_ind <- summarySE(df_mushroom, measurevar="s", groupvars=c("nTotal", "confidence_peer", "sID")) 
+summ_group <- summarySE(summ_ind, measurevar="s", groupvars=c("nTotal", "confidence_peer"))
+
+ggplot(data = summ_group, aes(x = as.factor(confidence_peer), y = s, color = as.factor(nTotal))) +
+  geom_line(data = summ_ind, aes(group = interaction(as.factor(nTotal),sID)), alpha = 0.2) +
+  geom_line(aes(x = confidence_peer), size = 1.2) +
+  geom_point(size = 2) + 
+  geom_errorbar(aes(ymin=s-se, ymax=s+se), size=2, width = 0.2) +
+  theme_classic(base_size = 30) +
+  scale_color_manual(labels=c("low", "high"),name="own certainty",values = c('#453781FF',"#95D840FF" )) + 
+  scale_x_discrete(name = "peer confidence", labels = c("1"="low", "2"="medium", "3"="high")) +
+  coord_cartesian(ylim = c(0,1)) +
+  ylab("social information use") + 
+  theme(legend.position = 'none')
+
+
+
+################################################################################
+#### Linear mixed model: Social information use as a function of own certainty and peer confidence
+################################################################################
+
+
+df_mushroom$confidence_peer_c <- df_mushroom$confidence_peer-2 # set medium confidence to 0
+df_mushroom$nTotal_ind <- as.numeric(ifelse(df_mushroom$nTotal==5, -0.5, 0.5)) # change to: uncertain = -0.5; certain = 0.5
+
+
+fit <- lmerTest::lmer(s ~ nTotal_ind*confidence_peer_c + 
+                        (1 + nTotal_ind*confidence_peer_c| sID),
+                        data=df_mushroom, 
+                        control = lmerControl(optimizer = "nloptwrap", optCtrl=list(maxfun=2e5)))
+summary(fit) 
+
+# own certainty 45 vs 5: beta = -0.16, p < 0.001
+# peer confidence: beta = 0.17, p < 0.001
+# own certainty x peer confidence: beta = -0.03, p = 0.002
+
+
+################################################################################
+#### Combine data with random effects from model
+################################################################################
+
+ranefs <- ranef(fit)$sID
+colnames(ranefs) <- c("IC", "uncertainty", "peerConfidence", "uncertaintyConfidence")
+for(i_subject in unique(df_mushroom_clean$sID)) {
+    df_mushroom_clean$ranef_uncertainty[df_mushroom_clean$sID==i_subject] <- ranefs[as.character(i_subject), "uncertainty"]
+    df_mushroom_clean$ranef_peerConfidence[df_mushroom_clean$sID==i_subject] <- ranefs[as.character(i_subject), "peerConfidence"]
+    df_mushroom_clean$ranef_uncertaintyConfidence[df_mushroom_clean$sID==i_subject] <- ranefs[as.character(i_subject), "uncertaintyConfidence"]
+    df_mushroom_clean$totalef_uncertainty[df_mushroom_clean$sID==i_subject] <- fixef(fit)[["nTotal_ind"]] + ranefs[as.character(i_subject), "uncertainty"]
+    df_mushroom_clean$totalef_peerConfidence[df_mushroom_clean$sID==i_subject] <- fixef(fit)[["confidence_peer_c"]] + ranefs[as.character(i_subject), "peerConfidence"]
+    df_mushroom_clean$totalef_uncertaintyConfidence[df_mushroom_clean$sID==i_subject] <- fixef(fit)[["nTotal_ind:confidence_peer_c"]] + ranefs[as.character(i_subject), "uncertaintyConfidence"]
+} 
+write_csv(df_mushroom_clean, file.path(derivatives_wd, "group_task-mushroom_preproc-trialwise-ranefs.csv"))
+
+```
+
+
+
