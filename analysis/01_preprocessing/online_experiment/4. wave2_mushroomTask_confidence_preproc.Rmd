@@ -1,0 +1,318 @@
+---
+title: "4. wave2_mushroomTask_confidence_preproc"
+author: "Lieke Hofmans"
+date: "7/29/2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+
+```{r setup, include=FALSE}
+
+rm(list = ls())
+
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warnings = FALSE)
+
+# packages
+library("ggplot2")
+library("stringr")
+library("tidyr")
+library("viridis")
+library("stringi")
+library("readr")
+library("ez")
+library("lme4")
+library("lmerTest")
+library("dplyr")
+library("tidyverse")
+
+
+# directories
+setwd("P:/fMRI Projects/fMRI Project Mushroom/0_online_experiment/analysis")
+analysis_wd <- getwd()
+main_wd <- ".."
+rawdata_wd <- "../rawdata"
+rawdata_mushroom_wd <- "../rawdata/4. wave2_mushroomTask_confidence"
+data_wd <- "../data"
+
+source("summary_function.R")
+
+# how many rows is a behavioral dataset supposed to have?
+correct_nTrials <- 54
+```
+
+Create csv including bonus and comments 
+```{r csv bonus, echo=FALSE}
+# select datafiles based on pattern
+selected_files <- list.files(path = rawdata_mushroom_wd, pattern = "^[[:alnum:]]{24}_mushroom_task_(.{24})csv$")
+list_Male <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_wave2_Male.csv"))
+list_Female <- read.csv(file.path(rawdata_mushroom_wd, "prolific_export_wave2_Female.csv"))
+
+
+# initiate dataframe to retrieve bonus and comments
+df_bonus <- data.frame(matrix(ncol = 6, nrow = length(selected_files)))
+colnames(df_bonus) <- c("prID", "sex", "age", "bonus", "comments_instructions", "comments_other")
+
+# loop through selected files to filter data
+for (file_index in 1:length(selected_files)){
+  if (file.size(file.path(rawdata_mushroom_wd, selected_files[file_index])) > 2){
+    datafile <- read.csv(file.path(rawdata_mushroom_wd, selected_files[file_index]))
+    if (nrow(datafile[!is.na(datafile$seen_ratio),]) == correct_nTrials){ # only store complete datasets
+      df_bonus$prID[file_index] <- unique(datafile$participant)
+      if (df_bonus$prID[file_index] %in% list_Male$participant_id){
+        df_bonus$sex[file_index] <- "Male"
+        df_bonus$age[file_index] <- list_Male$age[list_Male$participant_id == df_bonus$prID[file_index]]
+      } else if (df_bonus$prID[file_index] %in% list_Female$participant_id){
+        df_bonus$sex[file_index] <- "Female"
+        df_bonus$age[file_index] <- list_Female$age[list_Female$participant_id == df_bonus$prID[file_index]]
+      } 
+      df_bonus$bonus[file_index] <- unique(datafile$bonus[!is.na(datafile$bonus)])
+      if ("input_instructions.text" %in% colnames(datafile)){
+        df_bonus$comments_instructions[file_index] <- unique(datafile$input_instructions.text[!stri_isempty(datafile$input_instructions.text)])
+        df_bonus$comments_other[file_index] <- unique(datafile$input_other.text[!stri_isempty(datafile$input_other.text)])
+      }
+    }
+  }
+} 
+df_bonus <- df_bonus[!is.na(df_bonus$prID),]
+mean(df_bonus$bonus) # 1.10 pounds
+
+#write_csv(df_bonus, file.path(data_wd, "4. demographics_wave2_mushroomTask_confidence.csv"))
+
+```
+
+
+Create csv with behavioral data
+```{r csv behavioral data, echo=FALSE}
+
+selected_files <- list.files(path = rawdata_mushroom_wd, pattern = "^[[:alnum:]]{24}_mushroom_task_(.{24})csv$") 
+
+# initiate dataframe to retrieve data
+df_all <- data.frame()
+# loop through selected files to filter data
+sID_index <- 1
+for (file_index in 1:length(selected_files)){
+  if (file.size(file.path(rawdata_mushroom_wd, selected_files[file_index])) > 2){
+    datafile <- read.csv(file.path(rawdata_mushroom_wd, selected_files[file_index]))
+    # keep only rows with behavioral task data
+    datafile <- datafile[!is.na(datafile$seen_ratio),]
+    if (nrow(datafile) == correct_nTrials){ # only store complete datasets
+      # keep only columns with relevant behavioral task data
+      datafile <- datafile[,c("participant", "nTotal", "trueRatio", "fillerTrial", "cross_hair.ITI", "seen_ratio", "nMushrooms", "nBlue", "nRed", "estimation1.rating", "estimation1.rt", "estimation2.rating", "estimation2.rt", "estimate_peer", "confidence_peer", "traits1", "traits2", "traits3")]
+      datafile <- cbind(sID = sID_index, trialNumber = c(1:nrow(datafile)), datafile)
+      df_all <- rbind(df_all, datafile)
+      sID_index <- sID_index + 1
+    }
+  }
+} 
+colnames(df_all) <- c("sID", "trialNumber", "prID", "nTotal", "true_ratio", "fillerTrial", "ITI", "seen_ratio", "nMushrooms", "nBlue", "nRed", "estimate1", "estimate1RT", "estimate2", "estimate2RT", "estimate_peer", "confidence_peer", "traits1", "traits2", "traits3")
+df_all$confidence_peer <- as.factor(df_all$confidence_peer)
+df_all$nTotal <- as.factor(df_all$nTotal)
+
+# calculate social information use s = (E2 - E1) / (X - E1)
+df_all$s <- (df_all$estimate2 - df_all$estimate1) / (df_all$estimate_peer - df_all$estimate1)
+
+# Participants’ updating strategies: 0, 0<s>1, 1
+df_all$strategy <- ifelse(df_all$s <= 0, "stay", ifelse(df_all$s >= 1, "copy", "compromise"))
+df_all$strategy <- factor(df_all$strategy, levels = c("copy", "compromise", "stay"))
+
+
+# combine age and sex from bonus file
+for(i_subject in unique(df_all$prID)) {
+    df_all$sex[df_all$prID==i_subject] <- df_bonus$sex[df_bonus$prID==i_subject]
+    df_all$age[df_all$prID==i_subject] <- df_bonus$age[df_bonus$prID==i_subject]
+} 
+df_all <- df_all %>% select(-prID, -traits1, -traits2, -traits3)
+write_csv(df_all, file.path(data_wd, "4. behdata_wave2_mushroomTask_confidence.csv"))
+
+
+
+```
+
+
+# Exclude participants and trials
+
+
+
+
+
+### Performance as a function of ratio and certainty level (individual) {.tabset}
+
+
+```{r 3b, warning=FALSE, fig.width=25, fig.height=55}
+# E1
+summ <- summarySE(df_all, measurevar="estimate1", groupvars=c("seen_ratio", "nTotal", "sID")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate1, color = as.factor(nTotal))) +
+  facet_wrap(vars(sID),ncol = 8) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_abline(intercept = 50, slope = 0) +
+  geom_jitter(data = df_all, alpha=0.5, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(ylim=c(0,100)) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_classic(base_size = 16) +
+  ggtitle("estimate 1")
+
+
+# E2
+summ <- summarySE(df_all, measurevar="estimate2", groupvars=c("seen_ratio", "nTotal", "sID")) # summarize data to retrieve mean and SE
+ggplot(data = summ, aes(x = seen_ratio, y = estimate2, color = as.factor(nTotal))) +
+  facet_wrap(vars(sID),ncol = 8) +
+  geom_abline(intercept = 0, slope = 100) +
+  geom_abline(intercept = 50, slope = 0) +
+  geom_jitter(data = df_all, alpha=0.5, width = 0.01, height = 0.01) +
+  geom_smooth(method = "lm") +
+  coord_cartesian(ylim=c(0,100)) +
+  scale_color_viridis(discrete=TRUE) +
+  theme_classic(base_size = 16) +
+  ggtitle("estimate 2")
+
+# Round 1: 
+# Lieke Hofmans: 8, 13, (19), 20, 23, 25, 32, 41, 57, (62), 64, 66, 74, 90, 96, (102), 115
+# Scarlett Slagter: 8, 13, 19, 20, 23, 25, 32, 41, 57, 62, 64, 66, 74, (82), (90), 96, 102, 115
+
+# Round 2 (with extra participants to fill up excluded spots):
+# Lieke Hofmans: 11, 16, (28), 29, 31, 34, 37, 39, 46, 55, (69), 73, (78), 80, 82, 90, 106, 112, (118), 131
+# Scarlett Slagter: 11, 16, 28, (29), 31, 34, 37, 39, 46, 55, 73, 78, 80, 82, 90, (98), (106), 112, 118, 131
+# Participant who should be excluded according to at least 1 rater will be excluded, and participants about whom both raters have doubts will be excluded.
+
+```
+
+
+# Remove outliers 
+
+### First set of exclusion criteria {.tabset}
+````{r outliers}
+
+df <- df_all
+
+# i. Participants whose estimates of the number of blue mushrooms were equal/similar to the number of blue mushrooms seen in the smaller sample or participants who do not show an effect of ratio.
+# (qualitative criteria)
+#to_exclude <- c(8, 13, 19, 20, 23, 25, 32, 41, 57, 62, 64, 66, 74, 90, 96, 102, 115) # first round
+to_exclude <- c(11, 16, 28, 29, 31, 34, 37, 39, 46, 55, 73, 78, 80, 82, 90, 106, 112, 118, 131)
+df <- df[!df$sID %in% to_exclude,] # -19 participants = 6264 trials left
+
+# ii. filler trials
+df <- df[df$fillerTrial==0,] # 1392 out of 6264 trials = 4872 trials left
+
+# iii. trials without a response because they were too late
+df <- df[!is.na(df$estimate2),] # 24 out of 4872 trials = 4848 trials left
+
+# iv. trials with either estimate 1 or estimate 2 RT < 0.2 sec.
+df <- df[df$estimate1RT >= 0.2 & df$estimate2RT >= 0.2,] # 0 out of 4848 trials = 4848 trials left
+
+# v. trials without suitable social info (suitable = 15-18 mushrooms from estimate 1, but could be slightly lower (13-14) in case E1 was very close to 0  or 1)
+df <- df[abs(df$estimate1 - df$estimate_peer) > 12 & abs(df$estimate1 - df$estimate_peer) < 19,] # 17 out of 4848 trials = 4831 trials left
+
+
+# vi. trials with either estimate 1 or estimate 2 > 3SD from mean, grouped per certainty level and ratio
+means_SDs_1 <- summarySE(df, measurevar="estimate1", groupvars=c("nTotal", "true_ratio"))
+means_SDs_2 <- summarySE(df, measurevar="estimate2", groupvars=c("nTotal", "true_ratio"))
+
+for(i_trial in 1:length(df$trialNumber)) {
+    df$trial_filter[i_trial] <- ifelse(abs(df$estimate1[i_trial] - means_SDs_1$estimate1[means_SDs_1$nTotal==df$nTotal[i_trial] & means_SDs_1$true_ratio==df$true_ratio[i_trial]]) <= 
+                                          3*means_SDs_1$sd[means_SDs_1$nTotal==df$nTotal[i_trial] & means_SDs_1$true_ratio==df$true_ratio[i_trial]], 1, 0)
+} 
+df <- df[df$trial_filter==1,] # 124 out of 4831 trials = 4707 trials left
+
+for(i_trial in 1:length(df$trialNumber)) {
+    df$trial_filter[i_trial] <- ifelse(abs(df$estimate2[i_trial] - means_SDs_2$estimate2[means_SDs_2$nTotal==df$nTotal[i_trial] & means_SDs_2$true_ratio==df$true_ratio[i_trial]]) <= 
+                                          3*means_SDs_2$sd[means_SDs_2$nTotal==df$nTotal[i_trial] & means_SDs_2$true_ratio==df$true_ratio[i_trial]], 1, 0)
+} 
+df <- df[df$trial_filter==1,] # 20 out of 4707 trials = 4687 trials left
+
+
+# vii. trials on which E2 is not a stay, compromise or copy of E1 and P
+# does participant move away from peer estimate? (wrong direction)
+df <- df[df$s >= 0,] # 85 out of 4687 trials = 4602 trials left 
+# does participant move even further than peer estimate? 
+df <- df[df$s <= 1,] # 33 out of 4602 trials = 4569 trials left
+
+# out of 4687 trials, 1.8% s < 0, 0.7% s > 1
+
+
+```
+
+
+### Exclude based on strategy use (individual) {.tabset}
+
+```{r strategies per participant, warning=FALSE, fig.width=25, fig.height=50}
+
+# low own certainty
+df[df$nTotal==5,]%>%
+  select(sID, confidence_peer, strategy)%>%
+  group_by(sID, confidence_peer, strategy)%>%
+  dplyr::summarise(n = n())%>%
+  dplyr::mutate(strategy_freq=n/sum(n))%>%
+  ggplot(aes(x=forcats::fct_reorder(confidence_peer, strategy_freq, .desc =FALSE), 
+             y=strategy_freq, 
+             fill=factor(strategy, levels=c("copy", "compromise", "stay"))))+ 
+  facet_wrap(vars(sID),ncol = 8) +
+  geom_bar(position="stack", 
+           stat="identity",  
+           width=0.5, 
+           alpha=0.85) +
+  scale_fill_manual(values = c("copy"="#01665E", "compromise"="#35978F", "stay"="#80CDC1", "other"="#C7EAE5"), 
+                    name="strategy")+
+  ylab("relative frequency")+
+  xlab("peer confidence")+
+  labs(fill="strategy")+
+  geom_text(aes(label=scales::percent(strategy_freq, accuracy=1L), 
+                y=strategy_freq), 
+            position=position_fill(vjust=0.5),
+            size=6) +
+  scale_x_discrete(labels=c("1" = "low", "2" = "medium", "3" = "high"), limits=c("1","2","3")) +
+  ggtitle("low own certainty") +
+  theme_classic(base_size = 16) 
+
+# high own certainty
+df[df$nTotal==45,]%>%
+  select(sID, confidence_peer, strategy)%>%
+  group_by(sID, confidence_peer, strategy)%>%
+  dplyr::summarise(n = n())%>%
+  dplyr::mutate(strategy_freq=n/sum(n))%>%
+  ggplot(aes(x=forcats::fct_reorder(confidence_peer, strategy_freq, .desc =FALSE), 
+             y=strategy_freq, 
+             fill=factor(strategy, levels=c("copy", "compromise", "stay"))))+ 
+  facet_wrap(vars(sID),ncol = 8) +
+  geom_bar(position="stack", 
+           stat="identity",  
+           width=0.5, 
+           alpha=0.85) +
+  scale_fill_manual(values = c("copy"="#01665E", "compromise"="#35978F", "stay"="#80CDC1", "other"="#C7EAE5"), 
+                    name="strategy")+
+  ylab("relative frequency")+
+  xlab("peer confidence")+
+  labs(fill="strategy")+
+  geom_text(aes(label=scales::percent(strategy_freq, accuracy=1L), 
+                y=strategy_freq), 
+            position=position_fill(vjust=0.5),
+            size=6) +
+  scale_x_discrete(labels=c("1" = "low", "2" = "medium", "3" = "high"), limits=c("1","2","3")) +
+  ggtitle("high own certainty") +
+  theme_classic(base_size = 16) 
+
+
+# viii. Exclude participants with S = 0 (stay) on more than 70% of trials
+freq_strategies <- df%>%
+  select(sID, strategy)%>%
+  group_by(sID, strategy)%>%
+  dplyr::summarise(n = n())%>%
+  dplyr::mutate(strategy_freq=n/sum(n))
+to_exclude <- freq_strategies$sID[freq_strategies$strategy=="stay" & freq_strategies$strategy_freq>0.70]
+df <- df[!df$sID %in% to_exclude,] # -15 participants = 3978 trials left (pp 4, 8, 21, 22, 32, 41, 65, 66, 74, 76, 83, 91, 96, 110, 120)
+
+# how many participants left?
+length(unique(df$sID)) # 101
+length(unique(df$sID[df$sex=="Female"])) # 50
+length(unique(df$sID[df$sex=="Male"])) # 51
+
+
+# NB: not excluding participants with > 70% stay trials does not qualitatively change the results.
+
+write_csv(df, file.path(data_wd, "4. behdata_wave2_mushroomTask_confidence_preproc.csv"))
+
+
+```

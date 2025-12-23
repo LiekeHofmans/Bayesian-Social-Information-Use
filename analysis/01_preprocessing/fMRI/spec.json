@@ -1,0 +1,61 @@
+{
+    "halfpipe_version": "1.2.2.post1.dev162+gc28ed13",
+    "schema_version": "3.0",
+    "timestamp": "2022-10-12_17-02",
+    "global_settings": {
+        "dummy_scans": 0,
+        "slice_timing": true,
+        "use_bbr": null,
+        "skull_strip_algorithm": "ants",
+        "run_mriqc": false,
+        "run_fmriprep": true,
+        "run_halfpipe": true,
+        "fd_thres": 0.5,
+        "anat_only": false,
+        "write_graph": false,
+        "hires": false,
+        "run_reconall": false,
+        "t2s_coreg": false,
+        "medial_surface_nan": false,
+        "bold2t1w_dof": 9,
+        "fmap_bspline": true,
+        "force_syn": false,
+        "longitudinal": false,
+        "regressors_all_comps": false,
+        "regressors_dvars_th": 1.5,
+        "regressors_fd_th": 0.5,
+        "skull_strip_fixed_seed": false,
+        "skull_strip_template": "OASIS30ANTs",
+        "aroma_err_on_warn": false,
+        "aroma_melodic_dim": -200,
+        "sloppy": false
+    },
+    "files": [
+        {
+            "metadata": {},
+            "datatype": "bids",
+            "path": "/ext/home/lhofman/Projects/mushroom_tux/bids"
+        }
+    ],
+    "settings": [
+        {
+            "ica_aroma": true,
+            "smoothing": {
+                "fwhm": 6.0
+            },
+            "grand_mean_scaling": {
+                "mean": 10000.0
+            },
+            "bandpass_filter": {
+                "type": "gaussian",
+                "lp_width": 0.0,
+                "hp_width": 100.0
+            },
+            "name": "preproc",
+            "filters": [],
+            "output_image": true
+        }
+    ],
+    "features": [],
+    "models": []
+}
