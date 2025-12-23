@@ -1,0 +1,18 @@
+exclude_beh,exclude_T1,exclude_fmri,exclude_mushroom,reason
+NA,NA,16,NA,No timings file available
+NA,NA,31,NA,Did not finish MRI session
+NA,NA,52,NA,Did not finish MRI session
+92,92,92,92,Fell outside age range
+NA,NA,65,NA,Failed fmriprep QC
+NA,NA,44,NA,Failed fmriprep QC
+NA,NA,23,NA,Failed fmriprep QC
+NA,NA,9,NA,Failed fmriprep QC
+NA,NA,115,NA,Failed fmriprep QC
+NA,NA,109,NA,Failed fmriprep QC
+NA,NA,87,NA,Failed fmriprep QC
+NA,NA,80,NA,Failed fmriprep QC
+NA,NA,71,NA,Failed fmriprep QC
+NA,NA,66,NA,Failed fmriprep QC
+NA,NA,122,122,did not adhere to task instructions
+NA,NA,109,109,>70% stay trials
+NA,NA,110,110,>70% stay trials

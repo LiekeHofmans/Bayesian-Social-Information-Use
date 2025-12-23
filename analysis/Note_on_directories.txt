@@ -1,0 +1,12 @@
+Note on directories
+
+For data archiving, files and folders had to be reorganized. Therefore, organization as specified in the analyses script is different from where the files and folders are actually located. 
+Please check and adapt the code accordingly. 
+
+For example: previously, all the data and code pertaining to the online experiment (experiment 1), was located in the project root, under 0_online_experiment, with subfolders such as raw_data and analysis:
+- root/0_online_experiment/raw_data
+- root/0_online_experiment/analysis
+Now, all raw_data is stored for both experiments together, same for analyses, etc.:
+- root/raw_data/online_experiment
+- root/analysis/01_preprocessing/online_experiment
+- root/analysis/04_level-group/mushroom/online_experiment
